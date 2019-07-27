@@ -1,0 +1,40 @@
+
+iii# Sens'it関連の備忘録
+Sens'itをごにょごにょ弄ったのでそのメモ
+基本的に https://qiita.com/ghibi/items/220719f348d522b02a8d に書いてあった
+が、うまくいかなかったこと(Macをつかってます)
+
+- gcc-arm-embeddedはbrewでは、インストールできず、本家のページ( https://developer.arm.com/tools-and-software/open-source-software/gnu-toolchain/gnu-rm/downloads )の通りインストールした
+- dfu-utilのインストールがエラーとなった、ファイルが競合している旨のメッセージだったので、そのファイルを削除(大丈夫か？)
+- ブートローダーモードになかなか入らない、ボタンの接触が悪いのかも？、しっかり素早く４回押しましょう
+- Sens'itへの書込みがエラーとなる、USBをはずした状態で、「sudo make prog」を実行してから、ブートローダーモードのSensns'itを接続する
+
+### Sens'itマニュアル
+- https://docid81hrs3j1.cloudfront.net/medialibrary/2018/09/manual-sensitv3.pdf
+
+### SDKソース
+- ここからダウンロード、APIマニュアルもその中にある
+  - https://build.sigfox.com/sensit-for-developers/#sensit-sdk
+- githubもあるけどライブラリやマニュアルはない見たい
+  - https://github.com/sigfox/sensit-sdk
+  - ここ( https://github.com/sigfox )には、他にもSens'it関連のソースがありそう
+
+### 通信ログの確認
+- https://backend.sigfox.com/device/list を開く
+- 該当デバイスのidをクリック
+- 左ペインのMESSAGEをクリック
+
+### WebHookの設定
+- https://backend.sigfox.com/devicetype/list を開く
+- 該当デバイスのnameをクリック
+- 左ペインのCALLBACKをクリック
+- ヘルプは下記
+    - https://backend.sigfox.com/apidocs/callback
+
+### その他
+- Sens'it app
+  - https://www.sensit.io/
+- sigfox build
+    - https://build.sigfox.com
+
+

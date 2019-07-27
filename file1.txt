@@ -1,0 +1,203 @@
+sss![ReButton](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/136795/20f265f2-1132-e5c9-c4e8-50fb8193d666.png)
+
+[IoTあるじゃん](https://algyan.connpass.com/)勉強会でReButtonを貰いました。
+遠隔お酌のコントローラにしてみようと思います。
+コントロールするには、傾きを検知するセンサが必要ですが、まだI2Cの加速度センサを手に入れていないので、とりあえず、ボタンを押すとお酌する仕様とします。
+
+# 遠隔お酌とは
+![d2892-196-609943-6 (1).jpg](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/136795/a8ad91c1-5110-d232-e5c6-1514058ba8a4.jpeg)
+
+とっくりコントローラーを傾けると、とっくりや缶ビールを乗せた装置が傾き、お酌ができる「IoTお酌装置」です、WiFiが繋がるところであれば、遠く離れた装置も傾けることができます。海外からお酌も成功しています。
+[遠隔お酌のページはこちら](https://enkakuoshaku.localinfo.jp/)
+
+# Arduino IDEの設定
+[https://seeedjp.github.io/ReButton/](https://seeedjp.github.io/ReButton/) の「Development environment」に書いてあります、特に難しいことはありません。古いバージョンのIDEではダメなようです。
+
+# プログラムの転送方法
+通常Arduinoでの開発は、USBを経由してPCからデバイスにプログラムを転送・書込みしますが、ReButtonには、USB端子がありません、プログラムのバイナリをAzure Storageを送信しておき、ReButtonがそこからダウンロード・書込みするという、ちょっと面倒な方法になります。
+またデバッグもできません、配線を半田付けするか、特殊なコネクタを買えば可能なようです。
+
+# ソースファイルの修正
+サンプルプログラムというかReButtonのソースファイルが、[https://github.com/SeeedJP/ReButtonApp](https://github.com/SeeedJP/ReButtonApp) にあります、見たところ、バイナリのダウンロードのソースも含まれているため、その部分は必ず実装する必要がありそうなので、これを変更して開発するのがよさそうです。
+
+## プログラムの解説
+メインのソースは「ReButtonApp.ino」になります、Arduinoは通常setup()関数で初期処理を、loop()関数で主な処理を書きますが、ReButtonは、電池の持ちをよくするため、ボタンを押すと電源が入り、処理を行い、電源を落とす処理になっているので、setup()に処理が書かれています、loop()は終了処理のみ書かれているようです。
+ボタンが押された時の処理は、ActionTaskBlocking()で行われているので、ここを変更します。
+
+## 通信処理追加
+遠隔お酌は、HTTPとかWebSocketではなくTCP独自プロトコルとなっています。
+バイナリの数バイトのデータを送受信しています、今回はとりあえず傾けるだけの機能を実装します。
+
+- TCP通信するAPIはAZ3166WiFiClientが使えるようです、マニュアルは、[https://microsoft.github.io/azure-iot-developer-kit/docs/apis/wifi-client/](https://microsoft.github.io/azure-iot-developer-kit/docs/apis/wifi-client/) にありました
+- お酌するプログラムActionOshaku.cppとActionOshaku.hを新規作成
+
+```cpp:ActionOshaku.cpp
+#include <Arduino.h>
+#include <AZ3166WiFi.h>
+#include <AZ3166WiFiClient.h>
+#include "Config.h"
+
+bool ActionOshaku(int value)
+{
+  unsigned char buf[5] = {0x55, 0xee, 1, 20, 0xff};
+  buf[4] = (unsigned char)value;
+  if (WiFi.begin(Config.WiFiSSID, Config.WiFiPassword) != WL_CONNECTED) return false;
+  while (WiFi.status() != WL_CONNECTED) {
+    wait_ms(100);
+  }
+  WiFiClient client;
+  if (client.connect("xxx.xxx.xxx.com", 999)) {
+    client.write(buf, sizeof buf);
+    delay(3000);
+    buf[4] = 0;
+    client.write(buf, sizeof buf);
+    client.stop();
+    return true;
+  }
+  return false;
+}
+```
+
+```cpp:ActionOshaku.h
+#pragma once
+
+bool ActionOshaku(int value);
+```
+
+- Action.cppの先頭にinclude文を追加
+
+```cpp:Action.cpp
+#include "ActionOshaku.h"
+```
+
+- Action.cppのActionTaskBlocking()関数にシングルクリックの場合、お酌装置に通信するようにActionOshaku()関数を呼ぶように修正
+
+```cpp:Action.cpp
+	case ACTION_10:
+	case ACTION_11:
+		return ActionOshaku(123);
+//		return ActionSendMessage(action);
+	case ACTION_AP:
+          ：
+```
+
+## ビルド
+IDEのメニューの下にあるチェックのボタンを押すか、「ctrl」＋「r」でコンパイルされます、出来上がったバイナリは、私の場合下記にありました。
+C:\Users\ユーザ名\AppData\Local\Temp\arduino_build_441572\ReButtonApp.ino.bin
+
+# プログラムの転送
+## CRC計算ツールのダウンロード
+[https://github.com/SeeedJP/ReButton/tree/master/tools/generatecrc](https://github.com/SeeedJP/ReButton/tree/master/tools/generatecrc)からCRC計算ツールをダウンロードします
+
+## CRCの計算
+上記のツールを使ってCRCを計算します
+
+```
+C:\>generatecrc.exe C:\Users\ユーザ名\AppData\Local\Temp\arduino_build_441572\ReButtonApp.ino.bin
+========== ReButton Firmware Information ==========
+
+Package path: C:\Users\ユーザ名\AppData\Local\Temp\arduino_build_441572\ReButtonApp.ino.bin
+Package CRC: 0xada3
+Package size: 682224
+
+===================================================
+```
+
+## Azure Storageにプログラムを配置
+詳細は[https://github.com/SeeedJP/ReButton/blob/master/OTA.md](https://github.com/SeeedJP/ReButton/blob/master/OTA.md) に書いてありますが、下記のとおりです。
+
+### Azure CLIをインストール
+Azure CLIがインストールされていない場合
+、インストールします、詳細は、[ここ](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli?view=azure-cli-latest) に書いてあります
+
+### Azure Portalでリソースグループを作成
+- 私は「東日本リージョンに」「ReButton」で作成しました
+
+### ストレージアカウントを作成
+- 私は「itobutton」で作成しました
+
+```
+az storage account create --location japaneast --name itobutton --resource-group ReButton --sku Standard_GRS
+```
+
+### 環境変数にストレージアカウントを設定
+- キーのリストを表示させます
+
+```
+C:\>az storage account keys list --account-name itobutton --resource-group ReButton
+[
+  {
+    "keyName": "key1",
+    "permissions": "Full",
+    "value": "rpO12lNJbLSwfDgNy1....xOyQ=="
+  },
+  {
+    "keyName": "key2",
+    "permissions": "Full",
+    "value": "B5GMg/hGqJvNn5qxvR....LT2Q=="
+  }
+]
+```
+
+- 環境変数にAZURE_STORAGE_ACCOUNTにストレージアカウント名を設定
+
+```
+C:\>set AZURE_STORAGE_ACCOUNT=itobutton
+```
+
+
+- 環境変数にAZURE_STORAGE_KEYに上記で表示させたkey1のvalueの値を設定
+
+```
+C:\>set AZURE_STORAGE_KEY=rpO12lNJbLSwfDgNy1....xOyQ==
+```
+
+### 保存するコンテナを作成
+
+```
+C:\>az storage container create --name buttoncontainer --public-access container
+```
+
+### プログラムをアップロード
+
+```
+C:\>az storage blob upload -f C:\Users\ユーザ名\AppData\Local\Temp\arduino_build_441572\ReButtonApp.ino.bin --container-name containername --name ReButtonApp.1.0.bin
+```
+
+### 保存先URLを確認
+Azure Portalで確認します、赤枠の所です。
+![SleepingCatNikko.jpg](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/136795/ab961202-dba1-e822-0c24-82f28485b273.jpeg)
+
+## ReButtonをAccess Pointモードで起動
+ボタンを押し続けてください、この間、LEDの色が変化します。10秒以上たったら、ボタンを離してください。
+すると、ボタンがAccess Pointモードで起動して、LEDが点滅しつづけます。
+
+## ReButtonのアクセスポイントに接続
+AZB-xxxxxxxxという名前のアクセスポイントがReButtonです。
+パソコンからこのアクセスポイントに接続してください。
+
+## アクセスポイントの設定
+ブラウザで[http://192.168.0.1/wifi](http://192.168.0.1/wifi) を開きます、SSIDとパスワードを設定してください
+
+## プログラムの保存先の設定
+ブラウザで[http://192.168.0.1/firmware](http://192.168.0.1/firmware) を開きます、
+
+- Package URIは、先ほどAzure Portalで確認したURLです。
+- Package CRCとPackage size先のCRC計算ツールで表示された値を指定します。CRCの値は先頭の「0x」も入れます。
+
+1. ReButtonのボタンを押し続けます、ブラウザのUpdateボタンをクリックします。
+1. RGB LEDが点滅し始めるまでボタンを押し続けます。ReButtonはファームウェアイメージをダウンロードし、CRCをチェックし、そして新しいイメージをフラッシュしています。これは約30秒かかります。
+1. RGB LEDが白色に変わったらボタンを離します。新しいファームウェアでAPモードに入っています。
+1. アクセスポイントが再起動したので、多分パソコンとの接続が切れています。再度、パソコンでAZB-xxxxxxxxという名前のアクセスポイントと接続します
+1. 再度、ブラウザで[http://192.168.0.1/wifi](http://192.168.0.1/wifi) を開きます、SSIDとパスワードを設定してください
+
+以上です。
+
+結構、大変ですね、Azureにバイナリを置くのが面倒なので、ローカルに置いてみましたが、うまくいきませんでした。
+httpsでなければいけないのか、httpヘッダなどが必要なのか、不明です。
+
+![ReButtonで遠隔お酌](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/136795/7aa9a9c5-14f6-3d1d-39aa-57266fcf1bde.png)
+
+[動いている動画](https://www.youtube.com/watch?v=omOlaii_2AQ)
+
+
