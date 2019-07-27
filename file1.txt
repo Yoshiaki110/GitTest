@@ -196,8 +196,15 @@ AZB-xxxxxxxxという名前のアクセスポイントがReButtonです。
 結構、大変ですね、Azureにバイナリを置くのが面倒なので、ローカルに置いてみましたが、うまくいきませんでした。
 httpsでなければいけないのか、httpヘッダなどが必要なのか、不明です。
 
+
+
+
+aaaaaa
+
+a
+
 ![ReButtonで遠隔お酌](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/136795/7aa9a9c5-14f6-3d1d-39aa-57266fcf1bde.png)
 
-[動いている動画](https://www.youtube.com/watch?v=omOlaii_2AQ)
+[aaa動いている動画](https://www.youtube.com/watch?v=omOlaii_2AQ)
 
 
